@@ -14,7 +14,6 @@
 
 #include <BMDSDIControl.h>                                // need to include the library
 
-// BMD_SDITallyControl_I2C sdiTallyControl(0x6E);            // define the Tally object using I2C using the default shield address
 BMD_SDITallyControl_Serial sdiTallyControl;
 BMD_SDICameraControl_Serial sdiCameraControl;
 
@@ -25,10 +24,10 @@ void setup()
   Serial.begin(115200);
   Serial.println("Blackmagic Design SDI Control Shield");
 
-  sdiTallyControl.begin();                                 // initialize tally control
-  sdiTallyControl.setOverride(true);                       // enable tally override
+  sdiTallyControl.begin();
+  sdiTallyControl.setOverride(true);
   sdiCameraControl.begin();
-  sdiCameraControl.setOverride(true);   // Important: pass-through mode to see incoming data
+  sdiCameraControl.setOverride(false);  // pass-through: read incoming camera control from SDI
 
   pinMode(LED_BUILTIN, OUTPUT);
   // pinMode(13, OUTPUT);                                     // initialize digital pin 13 as an output
@@ -52,13 +51,22 @@ void loop()
 
   delay(100);                                             // leave it ON for 1 second
 
-  // bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
-  if (bytesRead > 0) {
-    Serial.print("CAMCTRL [");
-    Serial.print(bytesRead);
-    Serial.print(" bytes]: ");
-    printHex(buffer, bytesRead);
-  } else Serial.println("No");
+  if (sdiCameraControl.available()) {
+    bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
+    if (bytesRead > 0) {
+      Serial.print("CAMCTRL [");
+      Serial.print(bytesRead);
+      Serial.print(" bytes]: ");
+      printHex(buffer, bytesRead);
+    } else if (bytesRead < 0) {
+      Serial.println("CAMCTRL buffer too small, flushing");
+      sdiCameraControl.flushRead();
+    } else {
+      Serial.println("CAMCTRL empty packet");
+    }
+  } else {
+    Serial.println("No");
+  }
 }
 
 

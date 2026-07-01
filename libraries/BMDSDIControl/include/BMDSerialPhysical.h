@@ -30,6 +30,12 @@
 #include <stdint.h>
 #include <Arduino.h>
 
+#if defined(ARDUINO_NANO_MATTER)
+#define BMD_SHIELD_SERIAL Serial1
+#else
+#define BMD_SHIELD_SERIAL Serial
+#endif
+
 namespace BMD
 {
 	template <typename T>
@@ -52,13 +58,35 @@ namespace BMD
 		{
 			kSync1Value = 0xDC,
 			kSync2Value = 0x42,
+			kSerialTimeoutMs = 100,
 		};
+
+		static void flushRx()
+		{
+			while (BMD_SHIELD_SERIAL.available())
+				BMD_SHIELD_SERIAL.read();
+		}
+
+		static bool waitForBytes(int count, unsigned long timeoutMs = kSerialTimeoutMs)
+		{
+			unsigned long start = millis();
+			while ((int)BMD_SHIELD_SERIAL.available() < count)
+			{
+				if (millis() - start > timeoutMs)
+				{
+					flushRx();
+					return false;
+				}
+			}
+			return true;
+		}
 	};
 
 	template <typename T>
 	void SerialPhysical<T>::begin()
 	{
-		Serial.begin(38400);
+		BMD_SHIELD_SERIAL.begin(38400);
+		flushRx();
 
 		T::begin();
 	}
@@ -66,7 +94,9 @@ namespace BMD
 	template <typename T>
 	uint32_t SerialPhysical<T>::regRead32(uint16_t address) const
 	{
-		uint8_t regBytes[4];
+		uint8_t regBytes[4] = {0, 0, 0, 0};
+
+		flushRx();
 
 		uint8_t request[] = {
 			kSync1Value,
@@ -77,15 +107,17 @@ namespace BMD
 			4,
 			0
 		};
-		Serial.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 
-		while (Serial.available() < 4);
-		regBytes[0] = Serial.read();
-		regBytes[1] = Serial.read();
-		regBytes[2] = Serial.read();
-		regBytes[3] = Serial.read();
+		if (!waitForBytes(4))
+			return 0;
+
+		regBytes[0] = BMD_SHIELD_SERIAL.read();
+		regBytes[1] = BMD_SHIELD_SERIAL.read();
+		regBytes[2] = BMD_SHIELD_SERIAL.read();
+		regBytes[3] = BMD_SHIELD_SERIAL.read();
 
 		return ((uint32_t)regBytes[3] << 24) | ((uint32_t)regBytes[2] << 16) | ((uint32_t)regBytes[1] << 8) | regBytes[0];
 	}
@@ -102,19 +134,21 @@ namespace BMD
 			4,
 			0
 		};
-		Serial.write(request, sizeof(request));
-		Serial.write(value >> 0);
-		Serial.write(value >> 8);
-		Serial.write(value >> 16);
-		Serial.write(value >> 24);
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(value >> 0);
+		BMD_SHIELD_SERIAL.write(value >> 8);
+		BMD_SHIELD_SERIAL.write(value >> 16);
+		BMD_SHIELD_SERIAL.write(value >> 24);
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 	}
 
 	template <typename T>
 	uint16_t SerialPhysical<T>::regRead16(uint16_t address) const
 	{
-		uint8_t regBytes[2];
+		uint8_t regBytes[2] = {0, 0};
+
+		flushRx();
 
 		uint8_t request[] = {
 			kSync1Value,
@@ -125,13 +159,15 @@ namespace BMD
 			2,
 			0
 		};
-		Serial.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 
-		while (Serial.available() < 2);
-		regBytes[0] = Serial.read();
-		regBytes[1] = Serial.read();
+		if (!waitForBytes(2))
+			return 0;
+
+		regBytes[0] = BMD_SHIELD_SERIAL.read();
+		regBytes[1] = BMD_SHIELD_SERIAL.read();
 
 		return ((uint16_t)regBytes[1] << 8) | regBytes[0];
 	}
@@ -148,16 +184,18 @@ namespace BMD
 			2,
 			0
 		};
-		Serial.write(request, sizeof(request));
-		Serial.write(value >> 0);
-		Serial.write(value >> 8);
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(value >> 0);
+		BMD_SHIELD_SERIAL.write(value >> 8);
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 	}
 
 	template <typename T>
 	uint8_t	SerialPhysical<T>::regRead8(uint16_t address) const
 	{
+		flushRx();
+
 		uint8_t request[] = {
 			kSync1Value,
 			kSync2Value,
@@ -167,12 +205,14 @@ namespace BMD
 			1,
 			0
 		};
-		Serial.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 
-		while (Serial.available() < 1);
-		return Serial.read();
+		if (!waitForBytes(1))
+			return 0;
+
+		return BMD_SHIELD_SERIAL.read();
 	}
 
 	template <typename T>
@@ -187,15 +227,20 @@ namespace BMD
 			1,
 			0
 		};
-		Serial.write(request, sizeof(request));
-		Serial.write(value);
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(value);
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 	}
 
 	template <typename T>
 	void SerialPhysical<T>::regRead(uint16_t address, uint8_t values[], int length) const
 	{
+		if (length <= 0)
+			return;
+
+		flushRx();
+
 		uint8_t request[] = {
 			kSync1Value,
 			kSync2Value,
@@ -205,14 +250,19 @@ namespace BMD
 			(uint8_t)length,
 			0
 		};
-		Serial.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 
 		for (int i = 0; i < length; i++)
 		{
-			while (Serial.available() < 1);
-			values[i] = Serial.read();
+			if (!waitForBytes(1))
+			{
+				for (int j = i; j < length; j++)
+					values[j] = 0;
+				return;
+			}
+			values[i] = BMD_SHIELD_SERIAL.read();
 		}
 	}
 
@@ -228,9 +278,9 @@ namespace BMD
 			(uint8_t)length,
 			0
 		};
-		Serial.write(request, sizeof(request));
-		Serial.write(values, length);
+		BMD_SHIELD_SERIAL.write(request, sizeof(request));
+		BMD_SHIELD_SERIAL.write(values, length);
 
-		Serial.flush();
+		BMD_SHIELD_SERIAL.flush();
 	}
 }

@@ -51,14 +51,19 @@ namespace BMD {
     momentaryOverride = enabled;
   }
 
-  bool SDICameraControl::available() const { return (regRead8(kRegICARM) & kRegOCARM_ARM_Mask) == 0; }
+  bool SDICameraControl::available() const { return (regRead8(kRegICARM) & kRegICARM_ARM_Mask) == 0; }
 
   int SDICameraControl::read(byte data[], int dataLength) const {
     if (!available())
       return 0;
 
-    // Read control data incoming length and data
-    int availableLength = regRead16(kRegICLENGTH);
+    // ICLENGTH is a single-byte register
+    int availableLength = regRead8(kRegICLENGTH);
+
+    if (availableLength <= 0) {
+      flushRead();
+      return 0;
+    }
 
     if (availableLength > dataLength)
       return -1;

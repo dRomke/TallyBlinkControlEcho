@@ -31,6 +31,10 @@
 #include <Wire.h>
 #include <stdint.h>
 
+#ifndef BUFFER_LENGTH
+#define BUFFER_LENGTH 32
+#endif
+
 namespace BMD {
 template <typename T> class I2CPhysical : public T {
 public:
