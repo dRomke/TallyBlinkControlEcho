@@ -14,6 +14,7 @@
 
 #include <BMDSDIControl.h>
 #include <RadioLib.h>
+#include <MonitorLog.h>
 #include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
@@ -108,11 +109,7 @@ void processCamctrlBuffer(const byte* buffer, int bytesRead)
   while (offset < bytesRead) {
     int pktLen = camctrlPacketTotalLen(buffer + offset, bytesRead - offset);
     if (pktLen < 0) {
-      Serial.print("CAMCTRL parse error at offset ");
-      Serial.print(offset);
-      Serial.print(" in ");
-      Serial.print(bytesRead);
-      Serial.println(" byte bundle");
+      monitorLogError(F("CAMCTRL parse error in bundle"));
       break;
     }
 
@@ -121,16 +118,11 @@ void processCamctrlBuffer(const byte* buffer, int bytesRead)
     if (!camctrlDbContains(pkt, pktLen)) {
       if (loraSendRaw(LORA_TYPE_CAMCTRL, pkt, pktLen)) {
         camctrlDbInsert(pkt, pktLen);
-        Serial.print("CAMCTRL pkt [");
-        Serial.print(pktLen);
-        Serial.print(" bytes] cam ");
-        Serial.print(pkt[0]);
-        Serial.print(" cat ");
-        Serial.print(pkt[4]);
-        Serial.print(" param ");
-        Serial.print(pkt[5]);
-        Serial.println(" -> LoRa");
+        monitorLogCamctrlTx(pktLen, pkt);
+        monitorLogCamctrlHex("TX", pkt, pktLen);
       }
+    } else {
+      monitorLogCamctrlSkipped(pktLen, pkt);
     }
 
     offset += pktLen;
@@ -141,7 +133,8 @@ void setup()
 {
   Serial.begin(115200);
   delay(2500);
-  Serial.println("Blackmagic Design SDI Control Shield + LoRa");
+  Serial.println(F("Blackmagic Design SDI Control Shield + LoRa"));
+  monitorPrintConfig();
 
   sdiTallyControl.begin();
   sdiTallyControl.setOverride(false);
@@ -168,9 +161,8 @@ void loop()
   if (sdiTallyControl.available()) {
     int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
     if (bytesRead > 0 && loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
-      Serial.print("TALLY [");
-      Serial.print(bytesRead);
-      Serial.println(" bytes] -> LoRa");
+      monitorLogTallyTx(bytesRead);
+      monitorLogTallyHex("TX", buffer, bytesRead);
     }
   }
 
@@ -179,7 +171,7 @@ void loop()
     if (bytesRead > 0) {
       processCamctrlBuffer(buffer, bytesRead);
     } else if (bytesRead < 0) {
-      Serial.println("CAMCTRL buffer too small, flushing");
+      monitorLogError(F("CAMCTRL buffer too small, flushing"));
       sdiCameraControl.flushRead();
     }
   }
@@ -201,10 +193,7 @@ bool loraSendRaw(uint8_t type, const byte* data, int len)
   }
 
   if (len > (int)LORA_MAX_RAW) {
-    Serial.print("LoRa truncate ");
-    Serial.print(len);
-    Serial.print(" -> ");
-    Serial.println(LORA_MAX_RAW);
+    monitorLogErrorCode(F("LoRa truncate to "), LORA_MAX_RAW);
     len = LORA_MAX_RAW;
   }
 
@@ -216,8 +205,7 @@ bool loraSendRaw(uint8_t type, const byte* data, int len)
   int state = lora.transmit(packet, len + 1);
   digitalWrite(LED_BUILTIN, LED_INACTIVE);
   if (state != RADIOLIB_ERR_NONE) {
-    Serial.print("LoRa TX err ");
-    Serial.println(state);
+    monitorLogErrorCode(F("LoRa TX err "), state);
     return false;
   }
   return true;

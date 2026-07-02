@@ -11,6 +11,7 @@
 
 #include <BMDSDIControl.h>
 #include <RadioLib.h>
+#include <MonitorLog.h>
 #include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
@@ -52,7 +53,8 @@ void setup()
 {
   Serial.begin(115200);
   delay(2500);
-  Serial.println("BMD SDI Shield LoRa Receiver");
+  Serial.println(F("BMD SDI Shield LoRa Receiver"));
+  monitorPrintConfig();
 
   sdiTallyControl.begin();
   sdiTallyControl.setOverride(true);
@@ -74,8 +76,7 @@ void setup()
   lora.setPacketReceivedAction(onLoraRx);
   state = lora.startReceive();
   if (state != RADIOLIB_ERR_NONE) {
-    Serial.print(F("startReceive failed, code "));
-    Serial.println(state);
+    monitorLogErrorCode(F("startReceive failed, code "), state);
   }
 }
 
@@ -92,7 +93,7 @@ void loop()
   if (state == RADIOLIB_ERR_NONE) {
     size_t len = lora.getPacketLength();
     if (len < 2) {
-      Serial.println("LoRa packet too short");
+      monitorLogError(F("LoRa packet too short"));
     } else {
       uint8_t type = packet[0];
       const byte* payload = packet + 1;
@@ -108,38 +109,31 @@ void loop()
       if (apply) {
         digitalWrite(LED_BUILTIN, LED_ACTIVE);
 
+        float rssi = lora.getRSSI();
+
         if (type == LORA_TYPE_CAMCTRL) {
           sdiCameraControl.write(payload, payloadLen, true);
-          Serial.print("LoRa -> SDI CAMCTRL [");
-          Serial.print(payloadLen);
-          Serial.print(" bytes] RSSI ");
-          Serial.print(lora.getRSSI());
-          Serial.println(" dBm");
+          monitorLogCamctrlRx(payloadLen, rssi);
+          monitorLogCamctrlHex("RX", payload, payloadLen);
         } else if (type == LORA_TYPE_TALLY) {
           sdiTallyControl.write(payload, payloadLen);
-          Serial.print("LoRa -> SDI TALLY [");
-          Serial.print(payloadLen);
-          Serial.print(" bytes] RSSI ");
-          Serial.print(lora.getRSSI());
-          Serial.println(" dBm");
+          monitorLogTallyRx(payloadLen, rssi);
+          monitorLogTallyHex("RX", payload, payloadLen);
         } else {
-          Serial.print("LoRa unknown type 0x");
-          Serial.println(type, HEX);
+          monitorLogErrorCode(F("LoRa unknown type 0x"), type);
         }
 
         digitalWrite(LED_BUILTIN, LED_INACTIVE);
       }
     }
   } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-    Serial.println("LoRa CRC error");
+    monitorLogError(F("LoRa CRC error"));
   } else {
-    Serial.print("LoRa RX err ");
-    Serial.println(state);
+    monitorLogErrorCode(F("LoRa RX err "), state);
   }
 
   state = lora.startReceive();
   if (state != RADIOLIB_ERR_NONE) {
-    Serial.print("startReceive failed, code ");
-    Serial.println(state);
+    monitorLogErrorCode(F("startReceive failed, code "), state);
   }
 }

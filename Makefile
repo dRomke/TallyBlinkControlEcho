@@ -2,6 +2,8 @@ FQBN ?= SiliconLabs:silabs:nano_matter:protocol_stack=none
 TX_SKETCH = TallyBlinkControlEcho.ino
 RX_SKETCH = TallyBlinkControlReceiver
 LIBRARY = libraries/BMDSDIControl
+INCLUDE_DIR = include
+BUILD_FLAGS = --build-property compiler.cpp.extra_flags=-I$(CURDIR)/$(INCLUDE_DIR)
 MONITOR_SCRIPT = scripts/monitor.sh
 BAUD ?= 115200
 
@@ -17,10 +19,10 @@ PORT ?= $(TX_PORT)
 compile: compile-tx
 
 compile-tx:
-	arduino-cli compile --fqbn $(FQBN) --library $(LIBRARY) $(TX_SKETCH)
+	arduino-cli compile --fqbn $(FQBN) --library $(LIBRARY) $(BUILD_FLAGS) $(TX_SKETCH)
 
 compile-rx:
-	arduino-cli compile --fqbn $(FQBN) --library $(LIBRARY) $(RX_SKETCH)
+	arduino-cli compile --fqbn $(FQBN) --library $(LIBRARY) $(BUILD_FLAGS) $(RX_SKETCH)
 
 upload: upload-tx
 
