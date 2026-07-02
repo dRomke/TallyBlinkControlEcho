@@ -35,7 +35,7 @@ void setup()
   sdiCameraControl.setOverride(true);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LOW);
 
   Serial.print(F("[LLCC68] Initializing ... "));
   int state = lora.begin(863.4, 500, 5);
@@ -51,7 +51,9 @@ void loop()
 {
   byte packet[LORA_MAX_PAYLOAD];
 
+  digitalWrite(LED_BUILTIN, HIGH);
   int state = lora.receive(packet, sizeof(packet));
+  digitalWrite(LED_BUILTIN, LOW);
 
   if (state == RADIOLIB_ERR_NONE) {
     size_t len = lora.getPacketLength();
@@ -63,8 +65,6 @@ void loop()
     uint8_t type = packet[0];
     const byte* payload = packet + 1;
     int payloadLen = len - 1;
-
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 
     if (type == LORA_TYPE_CAMCTRL) {
       sdiCameraControl.write(payload, payloadLen, true);

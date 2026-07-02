@@ -36,7 +36,7 @@ void setup()
   sdiCameraControl.setOverride(false);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LOW);
 
   Serial.print(F("[LLCC68] Initializing ... "));
   int state = lora.begin(863.4, 500, 5);
@@ -99,7 +99,9 @@ void loraSendRaw(uint8_t type, const byte* data, int len)
   packet[0] = type;
   memcpy(packet + 1, data, len);
 
+  digitalWrite(LED_BUILTIN, HIGH);
   int state = lora.transmit(packet, len + 1);
+  digitalWrite(LED_BUILTIN, LOW);
   if (state != RADIOLIB_ERR_NONE) {
     Serial.print("LoRa TX err ");
     Serial.println(state);
