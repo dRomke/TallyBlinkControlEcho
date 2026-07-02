@@ -29,7 +29,7 @@ static inline void monitorPrintConfig()
   Serial.println(F("[monitor] active flags:"));
   monitorPrintFlag(F("tally_summary"), MONITOR_TALLY_SUMMARY);
   monitorPrintFlag(F("tally_hex"), MONITOR_TALLY_HEX);
-  monitorPrintFlag(F("tally_decode"), MONITOR_TALLY_DECODE);
+  monitorPrintFlag(F("tally_decode_tx"), MONITOR_TALLY_DECODE_TX);
   monitorPrintFlag(F("camctrl_summary"), MONITOR_CAMCTRL_SUMMARY);
   monitorPrintFlag(F("camctrl_hex"), MONITOR_CAMCTRL_HEX);
   monitorPrintFlag(F("camctrl_skipped"), MONITOR_CAMCTRL_SKIPPED);
@@ -93,13 +93,12 @@ static inline void monitorLogTallyHex(const char* tag, const byte* data, int len
 static inline void monitorLogTallyHex(const char*, const byte*, int) {}
 #endif
 
-#if MONITOR_TALLY_DECODE
-static inline void monitorLogTallyDecode(const char* tag, const byte* data, int len)
+#if MONITOR_TALLY_DECODE_TX
+static inline void monitorLogTallyDecodeTx(const byte* data, int len)
 {
   bool any = false;
 
-  Serial.print(tag);
-  Serial.println(F(" TALLY decode:"));
+  Serial.println(F("TALLY decode:"));
 
   for (int cam = 1; cam <= len; cam++) {
     uint8_t flags = data[cam - 1];
@@ -127,7 +126,7 @@ static inline void monitorLogTallyDecode(const char* tag, const byte* data, int 
   Serial.flush();
 }
 #else
-static inline void monitorLogTallyDecode(const char*, const byte*, int) {}
+static inline void monitorLogTallyDecodeTx(const byte*, int) {}
 #endif
 
 #if MONITOR_CAMCTRL_SUMMARY
