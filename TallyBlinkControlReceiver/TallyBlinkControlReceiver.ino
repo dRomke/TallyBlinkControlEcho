@@ -23,6 +23,35 @@ static const uint8_t LORA_TYPE_CAMCTRL = 0x01;
 static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
 
+static byte lastTally[256];
+static int  lastTallyLen = -1;
+static byte lastCamctrl[256];
+static int  lastCamctrlLen = -1;
+
+bool payloadChanged(uint8_t type, const byte* data, int len)
+{
+  byte* lastData;
+  int* lastLen;
+
+  if (type == LORA_TYPE_TALLY) {
+    lastData = lastTally;
+    lastLen = &lastTallyLen;
+  } else if (type == LORA_TYPE_CAMCTRL) {
+    lastData = lastCamctrl;
+    lastLen = &lastCamctrlLen;
+  } else {
+    return true;
+  }
+
+  if (*lastLen == len && memcmp(lastData, data, len) == 0) {
+    return false;
+  }
+
+  memcpy(lastData, data, len);
+  *lastLen = len;
+  return true;
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -51,9 +80,7 @@ void loop()
 {
   byte packet[LORA_MAX_PAYLOAD];
 
-  digitalWrite(LED_BUILTIN, HIGH);
   int state = lora.receive(packet, sizeof(packet));
-  digitalWrite(LED_BUILTIN, LOW);
 
   if (state == RADIOLIB_ERR_NONE) {
     size_t len = lora.getPacketLength();
@@ -65,6 +92,12 @@ void loop()
     uint8_t type = packet[0];
     const byte* payload = packet + 1;
     int payloadLen = len - 1;
+
+    if (!payloadChanged(type, payload, payloadLen)) {
+      return;
+    }
+
+    digitalWrite(LED_BUILTIN, HIGH);
 
     if (type == LORA_TYPE_CAMCTRL) {
       sdiCameraControl.write(payload, payloadLen, true);
@@ -84,6 +117,8 @@ void loop()
       Serial.print("LoRa unknown type 0x");
       Serial.println(type, HEX);
     }
+
+    digitalWrite(LED_BUILTIN, LOW);
   } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
     Serial.println("LoRa CRC error");
   } else if (state != RADIOLIB_ERR_RX_TIMEOUT) {

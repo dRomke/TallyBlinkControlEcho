@@ -24,6 +24,35 @@ static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
 static const size_t  LORA_MAX_RAW      = LORA_MAX_PAYLOAD - 1;
 
+static byte lastTally[256];
+static int  lastTallyLen = -1;
+static byte lastCamctrl[256];
+static int  lastCamctrlLen = -1;
+
+bool payloadChanged(uint8_t type, const byte* data, int len)
+{
+  byte* lastData;
+  int* lastLen;
+
+  if (type == LORA_TYPE_TALLY) {
+    lastData = lastTally;
+    lastLen = &lastTallyLen;
+  } else if (type == LORA_TYPE_CAMCTRL) {
+    lastData = lastCamctrl;
+    lastLen = &lastCamctrlLen;
+  } else {
+    return true;
+  }
+
+  if (*lastLen == len && memcmp(lastData, data, len) == 0) {
+    return false;
+  }
+
+  memcpy(lastData, data, len);
+  *lastLen = len;
+  return true;
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -83,7 +112,7 @@ void loop()
 
 void loraSendRaw(uint8_t type, const byte* data, int len)
 {
-  if (len <= 0) {
+  if (len <= 0 || !payloadChanged(type, data, len)) {
     return;
   }
 
