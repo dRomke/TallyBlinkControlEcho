@@ -14,7 +14,8 @@
 
 #include <BMDSDIControl.h>
 #include <RadioLib.h>
-#include <MonitorLog.h>
+#include "MonitorConfig.h"
+#include "MonitorLog.h"
 #include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
@@ -164,7 +165,7 @@ void setup()
   Serial.begin(115200);
   delay(2500);
   Serial.println(F("Blackmagic Design SDI Control Shield + LoRa"));
-  monitorPrintConfig();
+  monitorPrintConfig(F("TX"));
 
   sdiTallyControl.begin();
   sdiTallyControl.setOverride(false);
@@ -182,6 +183,17 @@ void setup()
     Serial.print(F("failed, code "));
     Serial.println(state);
   }
+
+  monitorPrintConfig(F("TX ready"));
+}
+
+bool tallyWillSend(const byte* data, int len)
+{
+  if (lastTallyLen != len || memcmp(lastTally, data, len) != 0) {
+    return true;
+  }
+
+  return (millis() - lastTallyTxMs >= TALLY_REFRESH_MS);
 }
 
 void handleTally()
@@ -199,19 +211,19 @@ void handleTally()
 
   bool tallyNew = !tallyContentMatches(buffer, bytesRead);
 
-  if (!loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
+  if (!tallyWillSend(buffer, bytesRead)) {
     return;
   }
 
-  monitorLogTallyTx(bytesRead);
-#if MONITOR_TALLY_HEX
-  monitorLogTallyHex("TX", buffer, bytesRead);
-#endif
+  // Log before LoRa TX — RF transmit can disrupt USB serial on the MCU.
+  monitorLogTallyTxData("TX", buffer, bytesRead);
 #if MONITOR_TALLY_DECODE_TX
   if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
     monitorLogTallyDecodeTx(buffer, bytesRead);
   }
 #endif
+
+  loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead);
 }
 
 void pollCamctrl()

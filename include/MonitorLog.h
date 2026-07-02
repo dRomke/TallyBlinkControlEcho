@@ -24,8 +24,12 @@ static inline void monitorPrintFlag(const __FlashStringHelper* name, int enabled
 }
 
 #if MONITOR_STARTUP_BANNER
-static inline void monitorPrintConfig()
+static inline void monitorPrintConfig(const __FlashStringHelper* role)
 {
+  Serial.println(F("[monitor] build "));
+  Serial.println(F(MONITOR_BUILD_ID));
+  Serial.print(F("[monitor] role "));
+  Serial.println(role);
   Serial.println(F("[monitor] active flags:"));
   monitorPrintFlag(F("tally_summary"), MONITOR_TALLY_SUMMARY);
   monitorPrintFlag(F("tally_hex"), MONITOR_TALLY_HEX);
@@ -35,9 +39,10 @@ static inline void monitorPrintConfig()
   monitorPrintFlag(F("camctrl_skipped"), MONITOR_CAMCTRL_SKIPPED);
   monitorPrintFlag(F("lora_rssi"), MONITOR_LORA_RSSI);
   monitorPrintFlag(F("lora_errors"), MONITOR_LORA_ERRORS);
+  Serial.flush();
 }
 #else
-static inline void monitorPrintConfig() {}
+static inline void monitorPrintConfig(const __FlashStringHelper*) {}
 #endif
 
 #if MONITOR_TALLY_SUMMARY
@@ -86,11 +91,29 @@ static inline void monitorLogTallyHex(const char* tag, const byte* data, int len
     Serial.print(F(": "));
     monitorPrintHex(data + offset, chunk);
     Serial.println();
-    Serial.flush();
   }
+
+  Serial.flush();
 }
 #else
 static inline void monitorLogTallyHex(const char*, const byte*, int) {}
+#endif
+
+#if MONITOR_TALLY_SUMMARY || MONITOR_TALLY_HEX
+static inline void monitorLogTallyTxData(const char* tag, const byte* data, int len)
+{
+#if MONITOR_TALLY_SUMMARY
+  Serial.print(F("TALLY ["));
+  Serial.print(len);
+  Serial.println(F(" bytes] -> LoRa"));
+  Serial.flush();
+#endif
+#if MONITOR_TALLY_HEX
+  monitorLogTallyHex(tag, data, len);
+#endif
+}
+#else
+static inline void monitorLogTallyTxData(const char*, const byte*, int) {}
 #endif
 
 #if MONITOR_TALLY_DECODE_TX

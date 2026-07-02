@@ -3,8 +3,12 @@
 /*
   Serial monitor configuration — edit these flags to enable/disable logging.
 
-  Set to 1 to enable, 0 to disable. Recompile and upload after changes.
+  Set to 1 to enable, 0 to disable. Recompile and upload with:
+    make upload-tx
+    make upload-rx
 */
+
+#define MONITOR_BUILD_ID "2026-07-02-tx-rx-log"
 
 // Tally
 #define MONITOR_TALLY_SUMMARY 1   // byte-count lines for tally TX/RX

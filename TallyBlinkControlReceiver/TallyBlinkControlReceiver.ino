@@ -11,7 +11,8 @@
 
 #include <BMDSDIControl.h>
 #include <RadioLib.h>
-#include <MonitorLog.h>
+#include "MonitorConfig.h"
+#include "MonitorLog.h"
 #include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
@@ -124,7 +125,7 @@ void setup()
   Serial.begin(115200);
   delay(2500);
   Serial.println(F("BMD SDI Shield LoRa Receiver"));
-  monitorPrintConfig();
+  monitorPrintConfig(F("RX"));
 
   sdiTallyControl.begin();
   sdiTallyControl.setOverride(true);
@@ -145,6 +146,7 @@ void setup()
 
   lora.setPacketReceivedAction(onLoraRx);
   resumeLoRaRx();
+  monitorPrintConfig(F("RX ready"));
 }
 
 void loop()
