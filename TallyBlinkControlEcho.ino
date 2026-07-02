@@ -24,6 +24,10 @@ static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
 static const size_t  LORA_MAX_RAW      = LORA_MAX_PAYLOAD - 1;
 
+// Nano Matter built-in LED is active LOW
+static const uint8_t LED_ACTIVE   = LOW;
+static const uint8_t LED_INACTIVE = HIGH;
+
 static byte lastTally[256];
 static int  lastTallyLen = -1;
 static byte lastCamctrl[256];
@@ -65,7 +69,7 @@ void setup()
   sdiCameraControl.setOverride(false);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, LED_INACTIVE);
 
   Serial.print(F("[LLCC68] Initializing ... "));
   int state = lora.begin(863.4, 500, 5);
@@ -83,19 +87,16 @@ void loop()
 
   if (sdiTallyControl.available()) {
     int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
-    if (bytesRead > 0) {
-      loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead);
+    if (bytesRead > 0 && loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
       Serial.print("TALLY [");
       Serial.print(bytesRead);
-      Serial.print(" bytes] -> LoRa");
-      Serial.println();
+      Serial.println(" bytes] -> LoRa");
     }
   }
 
   if (sdiCameraControl.available()) {
     int bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
-    if (bytesRead > 0) {
-      loraSendRaw(LORA_TYPE_CAMCTRL, buffer, bytesRead);
+    if (bytesRead > 0 && loraSendRaw(LORA_TYPE_CAMCTRL, buffer, bytesRead)) {
       Serial.print("CAMCTRL [");
       Serial.print(bytesRead);
       Serial.print(" bytes]: ");
@@ -106,14 +107,12 @@ void loop()
       sdiCameraControl.flushRead();
     }
   }
-
-  delay(10);
 }
 
-void loraSendRaw(uint8_t type, const byte* data, int len)
+bool loraSendRaw(uint8_t type, const byte* data, int len)
 {
   if (len <= 0 || !payloadChanged(type, data, len)) {
-    return;
+    return false;
   }
 
   if (len > (int)LORA_MAX_RAW) {
@@ -128,13 +127,15 @@ void loraSendRaw(uint8_t type, const byte* data, int len)
   packet[0] = type;
   memcpy(packet + 1, data, len);
 
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LED_ACTIVE);
   int state = lora.transmit(packet, len + 1);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, LED_INACTIVE);
   if (state != RADIOLIB_ERR_NONE) {
     Serial.print("LoRa TX err ");
     Serial.println(state);
+    return false;
   }
+  return true;
 }
 
 void printHex(const byte* data, int len)

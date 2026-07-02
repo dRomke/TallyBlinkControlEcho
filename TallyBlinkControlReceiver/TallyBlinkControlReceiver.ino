@@ -22,6 +22,11 @@ LLCC68 lora = new Module(10, 2, 3, 9);
 static const uint8_t LORA_TYPE_CAMCTRL = 0x01;
 static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
+static const uint32_t LORA_RX_TIMEOUT_MS = 10;
+
+// Nano Matter built-in LED is active LOW
+static const uint8_t LED_ACTIVE   = LOW;
+static const uint8_t LED_INACTIVE = HIGH;
 
 static byte lastTally[256];
 static int  lastTallyLen = -1;
@@ -64,7 +69,7 @@ void setup()
   sdiCameraControl.setOverride(true);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, LED_INACTIVE);
 
   Serial.print(F("[LLCC68] Initializing ... "));
   int state = lora.begin(863.4, 500, 5);
@@ -80,7 +85,7 @@ void loop()
 {
   byte packet[LORA_MAX_PAYLOAD];
 
-  int state = lora.receive(packet, sizeof(packet));
+  int state = lora.receive(packet, sizeof(packet), LORA_RX_TIMEOUT_MS);
 
   if (state == RADIOLIB_ERR_NONE) {
     size_t len = lora.getPacketLength();
@@ -97,7 +102,7 @@ void loop()
       return;
     }
 
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED_BUILTIN, LED_ACTIVE);
 
     if (type == LORA_TYPE_CAMCTRL) {
       sdiCameraControl.write(payload, payloadLen, true);
@@ -118,7 +123,7 @@ void loop()
       Serial.println(type, HEX);
     }
 
-    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(LED_BUILTIN, LED_INACTIVE);
   } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
     Serial.println("LoRa CRC error");
   } else if (state != RADIOLIB_ERR_RX_TIMEOUT) {
