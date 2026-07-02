@@ -29,6 +29,7 @@ static inline void monitorPrintConfig()
   Serial.println(F("[monitor] active flags:"));
   monitorPrintFlag(F("tally_summary"), MONITOR_TALLY_SUMMARY);
   monitorPrintFlag(F("tally_hex"), MONITOR_TALLY_HEX);
+  monitorPrintFlag(F("tally_decode"), MONITOR_TALLY_DECODE);
   monitorPrintFlag(F("camctrl_summary"), MONITOR_CAMCTRL_SUMMARY);
   monitorPrintFlag(F("camctrl_hex"), MONITOR_CAMCTRL_HEX);
   monitorPrintFlag(F("camctrl_skipped"), MONITOR_CAMCTRL_SKIPPED);
@@ -67,15 +68,66 @@ static inline void monitorLogTallyRx(int, float) {}
 #if MONITOR_TALLY_HEX
 static inline void monitorLogTallyHex(const char* tag, const byte* data, int len)
 {
+  const int bytesPerLine = MONITOR_TALLY_HEX_BYTES_PER_LINE;
+
   Serial.print(tag);
   Serial.print(F(" TALLY hex ["));
   Serial.print(len);
-  Serial.print(F("]: "));
-  monitorPrintHex(data, len);
-  Serial.println();
+  Serial.println(F("]:"));
+
+  for (int offset = 0; offset < len; offset += bytesPerLine) {
+    int chunk = len - offset;
+    if (chunk > bytesPerLine) {
+      chunk = bytesPerLine;
+    }
+
+    Serial.print(F("  "));
+    Serial.print(offset);
+    Serial.print(F(": "));
+    monitorPrintHex(data + offset, chunk);
+    Serial.println();
+    Serial.flush();
+  }
 }
 #else
 static inline void monitorLogTallyHex(const char*, const byte*, int) {}
+#endif
+
+#if MONITOR_TALLY_DECODE
+static inline void monitorLogTallyDecode(const char* tag, const byte* data, int len)
+{
+  bool any = false;
+
+  Serial.print(tag);
+  Serial.println(F(" TALLY decode:"));
+
+  for (int cam = 1; cam <= len; cam++) {
+    uint8_t flags = data[cam - 1];
+    bool program = flags & 0x01;
+    bool preview = flags & 0x02;
+
+    if (program || preview) {
+      any = true;
+      Serial.print(F("  cam "));
+      Serial.print(cam);
+      if (program) {
+        Serial.print(F(" PGM"));
+      }
+      if (preview) {
+        Serial.print(F(" PVW"));
+      }
+      Serial.println();
+    }
+  }
+
+  if (!any) {
+    Serial.println(F("  (no program/preview flags in payload)"));
+  }
+
+  Serial.flush();
+}
+#else
+static inline void monitorLogTallyDecode(const char*, const byte*, int) {}
 #endif
 
 #if MONITOR_CAMCTRL_SUMMARY

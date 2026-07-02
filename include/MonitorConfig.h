@@ -8,7 +8,9 @@
 
 // Tally
 #define MONITOR_TALLY_SUMMARY 1   // byte-count lines for tally TX/RX
-#define MONITOR_TALLY_HEX     1   // hex dump of tally payload (TX and RX)
+#define MONITOR_TALLY_HEX     1   // hex dump of tally payload (16 bytes/line)
+#define MONITOR_TALLY_DECODE  1   // decode program/preview per camera (bytes 0..N-1)
+#define MONITOR_TALLY_HEX_BYTES_PER_LINE 16
 
 // Camera control
 #define MONITOR_CAMCTRL_SUMMARY 1 // per-packet summary (camera/category/param)

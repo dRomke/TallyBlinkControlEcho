@@ -162,6 +162,7 @@ void loop()
     int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
     if (bytesRead > 0 && loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
       monitorLogTallyTx(bytesRead);
+      monitorLogTallyDecode("TX", buffer, bytesRead);
       monitorLogTallyHex("TX", buffer, bytesRead);
     }
   }

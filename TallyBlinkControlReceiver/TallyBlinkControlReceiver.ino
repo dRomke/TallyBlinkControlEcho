@@ -118,6 +118,7 @@ void loop()
         } else if (type == LORA_TYPE_TALLY) {
           sdiTallyControl.write(payload, payloadLen);
           monitorLogTallyRx(payloadLen, rssi);
+          monitorLogTallyDecode("RX", payload, payloadLen);
           monitorLogTallyHex("RX", payload, payloadLen);
         } else {
           monitorLogErrorCode(F("LoRa unknown type 0x"), type);
