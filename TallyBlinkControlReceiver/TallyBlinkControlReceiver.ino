@@ -124,6 +124,7 @@ void setup()
 {
   Serial.begin(115200);
   delay(2500);
+  Serial.println(F("SKETCH=TallyBlinkControlReceiver (RX)"));
   Serial.println(F("BMD SDI Shield LoRa Receiver"));
   monitorPrintConfig(F("RX"));
 

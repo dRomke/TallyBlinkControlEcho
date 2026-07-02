@@ -1,8 +1,8 @@
 #pragma once
 
 /*
-  TX/RX serial logging — edit flags here (include/ copy).
-  Mirror of MonitorConfig.h in project root — keep both in sync.
+  TX/RX serial logging — edit flags here (project root copy).
+  Mirror of include/MonitorConfig.h — keep both in sync.
 */
 
 #define MONITOR_BUILD_ID "2026-07-03-tally-hex"

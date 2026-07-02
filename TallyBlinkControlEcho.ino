@@ -54,6 +54,37 @@ static byte camctrlPending[256];
 static int  camctrlPendingLen = 0;
 static int  camctrlPendingOffset = 0;
 
+void txPrintTallyHex(const byte* data, int len)
+{
+  const int perLine = MONITOR_TALLY_HEX_BYTES_PER_LINE;
+
+  Serial.println(F("TALLY hex:"));
+
+  for (int off = 0; off < len; off += perLine) {
+    Serial.print(F("  "));
+    Serial.print(off);
+    Serial.print(F(": "));
+
+    int count = len - off;
+    if (count > perLine) {
+      count = perLine;
+    }
+
+    for (int i = 0; i < count; i++) {
+      uint8_t b = data[off + i];
+      if (b < 0x10) {
+        Serial.print('0');
+      }
+      Serial.print(b, HEX);
+      Serial.print(' ');
+    }
+
+    Serial.println();
+  }
+
+  Serial.flush();
+}
+
 int camctrlPacketTotalLen(const byte* data, int avail)
 {
   if (avail < CAMCTRL_HDR_LEN) {
@@ -164,6 +195,7 @@ void setup()
 {
   Serial.begin(115200);
   delay(2500);
+  Serial.println(F("SKETCH=TallyBlinkControlEcho (TX)"));
   Serial.println(F("Blackmagic Design SDI Control Shield + LoRa"));
   monitorPrintConfig(F("TX"));
 
@@ -216,9 +248,19 @@ void handleTally()
   }
 
   // Log before LoRa TX — RF transmit can disrupt USB serial on the MCU.
-  monitorLogTallyTxData("TX", buffer, bytesRead);
+#if MONITOR_TALLY_SUMMARY
+  Serial.print(F("TALLY ["));
+  Serial.print(bytesRead);
+  Serial.print(F(" bytes] fw="));
+  Serial.print(F(MONITOR_BUILD_ID));
+  Serial.println(F(" -> LoRa"));
+  Serial.flush();
+#endif
+#if MONITOR_TALLY_HEX
+  txPrintTallyHex(buffer, bytesRead);
+#endif
 #if MONITOR_TALLY_DECODE_TX
-  if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
+  if (tallyNew) {
     monitorLogTallyDecodeTx(buffer, bytesRead);
   }
 #endif
