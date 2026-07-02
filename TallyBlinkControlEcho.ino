@@ -14,9 +14,7 @@
 
 #include <BMDSDIControl.h>
 #include <RadioLib.h>
-#include <MonitorConfig.h>
 #include <MonitorLog.h>
-#include <stdio.h>
 #include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
@@ -101,32 +99,6 @@ bool tallyContentMatches(const byte* data, int len)
 {
   return lastTallyLen == len && memcmp(lastTally, data, len) == 0;
 }
-
-#if MONITOR_TALLY_HEX
-void logTxTallyHex(const byte* data, int len)
-{
-  char line[96];
-  const int perLine = MONITOR_TALLY_HEX_BYTES_PER_LINE;
-
-  Serial.println(F("TALLY hex:"));
-  Serial.flush();
-
-  for (int off = 0; off < len; off += perLine) {
-    int pos = snprintf(line, sizeof(line), "  %03d:", off);
-    int count = len - off;
-    if (count > perLine) {
-      count = perLine;
-    }
-
-    for (int i = 0; i < count && pos < (int)sizeof(line) - 4; i++) {
-      pos += snprintf(line + pos, sizeof(line) - pos, " %02X", data[off + i]);
-    }
-
-    Serial.println(line);
-    Serial.flush();
-  }
-}
-#endif
 
 bool tallyPayloadChanged(const byte* data, int len)
 {
@@ -232,16 +204,12 @@ void handleTally()
   }
 
   monitorLogTallyTx(bytesRead);
-  Serial.flush();
-
+#if MONITOR_TALLY_HEX
+  monitorLogTallyHex("TX", buffer, bytesRead);
+#endif
 #if MONITOR_TALLY_DECODE_TX
   if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
     monitorLogTallyDecodeTx(buffer, bytesRead);
-  }
-#endif
-#if MONITOR_TALLY_HEX
-  if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
-    logTxTallyHex(buffer, bytesRead);
   }
 #endif
 }

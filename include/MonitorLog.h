@@ -163,12 +163,26 @@ static inline void monitorLogCamctrlRx(int, float) {}
 #if MONITOR_CAMCTRL_HEX
 static inline void monitorLogCamctrlHex(const char* tag, const byte* data, int len)
 {
+  const int bytesPerLine = MONITOR_CAMCTRL_HEX_BYTES_PER_LINE;
+
   Serial.print(tag);
   Serial.print(F(" CAMCTRL hex ["));
   Serial.print(len);
-  Serial.print(F("]: "));
-  monitorPrintHex(data, len);
-  Serial.println();
+  Serial.println(F("]:"));
+
+  for (int offset = 0; offset < len; offset += bytesPerLine) {
+    int chunk = len - offset;
+    if (chunk > bytesPerLine) {
+      chunk = bytesPerLine;
+    }
+
+    Serial.print(F("  "));
+    Serial.print(offset);
+    Serial.print(F(": "));
+    monitorPrintHex(data + offset, chunk);
+    Serial.println();
+    Serial.flush();
+  }
 }
 #else
 static inline void monitorLogCamctrlHex(const char*, const byte*, int) {}

@@ -15,7 +15,8 @@
 
 // Camera control
 #define MONITOR_CAMCTRL_SUMMARY 1 // per-packet summary (camera/category/param)
-#define MONITOR_CAMCTRL_HEX     0 // hex dump per camera-control packet
+#define MONITOR_CAMCTRL_HEX     1 // hex dump per camera-control packet (16 bytes/line)
+#define MONITOR_CAMCTRL_HEX_BYTES_PER_LINE 16
 #define MONITOR_CAMCTRL_SKIPPED 0 // log camctrl packets suppressed by dedup (TX)
 
 // LoRa
