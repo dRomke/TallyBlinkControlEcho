@@ -1,78 +1,118 @@
 /*
-  Blink
-  Turns on an LED on for one second, then off for one second, repeatedly.
+  TallyBlinkControlEcho — SDI pass-through gateway with LoRa forward.
 
-  Addition to original blink sketch also turns on and off camera 1's tally indicator.
+  Reads camera control and tally from the BMD 3G-SDI Shield (Serial1) and
+  forwards raw payloads over LoRa (LLCC68 via RadioLib).
 
-  Most Arduinos have an on-board LED you can control. On the Uno and
-  Leonardo, it is attached to digital pin 13. If you're unsure what
-  pin the on-board LED is connected to on your Arduino model, check
-  the documentation at http://www.arduino.cc
-
-  This example code is in the public domain.
+  LoRa framing: 1-byte type prefix + raw SDI payload
+    0x01 = camera control (BMD ICDATA)
+    0x02 = tally (BMD ITDATA)
 */
 
-#include <BMDSDIControl.h>                                // need to include the library
+#include <BMDSDIControl.h>
+#include <RadioLib.h>
+#include <string.h>
 
 BMD_SDITallyControl_Serial sdiTallyControl;
 BMD_SDICameraControl_Serial sdiCameraControl;
 
-// the setup function runs once when you press reset or power the board
+// NSS=10, DIO1=2, NRST=3, BUSY=9
+LLCC68 lora = new Module(10, 2, 3, 9);
+
+static const uint8_t LORA_TYPE_CAMCTRL = 0x01;
+static const uint8_t LORA_TYPE_TALLY   = 0x02;
+static const size_t  LORA_MAX_PAYLOAD  = 255;
+static const size_t  LORA_MAX_RAW      = LORA_MAX_PAYLOAD - 1;
+
 void setup()
 {
-  delay(2500);
   Serial.begin(115200);
-  Serial.println("Blackmagic Design SDI Control Shield");
+  delay(2500);
+  Serial.println("Blackmagic Design SDI Control Shield + LoRa");
 
   sdiTallyControl.begin();
-  sdiTallyControl.setOverride(true);
+  sdiTallyControl.setOverride(false);
   sdiCameraControl.begin();
-  sdiCameraControl.setOverride(false);  // pass-through: read incoming camera control from SDI
+  sdiCameraControl.setOverride(false);
 
   pinMode(LED_BUILTIN, OUTPUT);
-  // pinMode(13, OUTPUT);                                     // initialize digital pin 13 as an output
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  Serial.print(F("[LLCC68] Initializing ... "));
+  int state = lora.begin(863.4, 500, 5);
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.println(F("ok"));
+  } else {
+    Serial.print(F("failed, code "));
+    Serial.println(state);
+  }
 }
 
-// the loop function runs over and over again forever
 void loop()
 {
-  static bool ledState = false;
-  byte buffer[256];       // Shield ICDATA max is 255 bytes
-  int bytesRead;
+  byte buffer[256];
 
-  ledState = !ledState;
-  digitalWrite(LED_BUILTIN, !ledState);                        // turn the LED ON
-
-  sdiTallyControl.setCameraTally(                          // turn tally ON
-    1,                                                     // Camera Number
-    ledState,                                              // Program Tally
-    false                                                  // Preview Tally
-  );
-
-  delay(100);                                             // leave it ON for 1 second
+  if (sdiTallyControl.available()) {
+    int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
+    if (bytesRead > 0) {
+      loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead);
+      Serial.print("TALLY [");
+      Serial.print(bytesRead);
+      Serial.print(" bytes] -> LoRa");
+      Serial.println();
+    }
+  }
 
   if (sdiCameraControl.available()) {
-    bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
+    int bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
     if (bytesRead > 0) {
+      loraSendRaw(LORA_TYPE_CAMCTRL, buffer, bytesRead);
       Serial.print("CAMCTRL [");
       Serial.print(bytesRead);
       Serial.print(" bytes]: ");
       printHex(buffer, bytesRead);
+      Serial.println(" -> LoRa");
     } else if (bytesRead < 0) {
       Serial.println("CAMCTRL buffer too small, flushing");
       sdiCameraControl.flushRead();
-    } else {
-      Serial.println("CAMCTRL empty packet");
     }
+  }
+
+  delay(10);
+}
+
+void loraSendRaw(uint8_t type, const byte* data, int len)
+{
+  if (len <= 0) {
+    return;
+  }
+
+  if (len > (int)LORA_MAX_RAW) {
+    Serial.print("LoRa truncate ");
+    Serial.print(len);
+    Serial.print(" -> ");
+    Serial.println(LORA_MAX_RAW);
+    len = LORA_MAX_RAW;
+  }
+
+  byte packet[LORA_MAX_PAYLOAD];
+  packet[0] = type;
+  memcpy(packet + 1, data, len);
+
+  int state = lora.transmit(packet, len + 1);
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.print("LoRa TX err ");
+    Serial.println(state);
   }
 }
 
-
-void printHex(byte* data, int len) {
+void printHex(const byte* data, int len)
+{
   for (int i = 0; i < len; i++) {
-    if (data[i] < 0x10) Serial.print("0");
+    if (data[i] < 0x10) {
+      Serial.print("0");
+    }
     Serial.print(data[i], HEX);
     Serial.print(" ");
   }
-  Serial.println();
 }
