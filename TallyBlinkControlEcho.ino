@@ -37,7 +37,7 @@ void setup()
 void loop()
 {
   static bool ledState = false;
-  byte buffer[64];        // Should be enough for most packets
+  byte buffer[256];       // Shield ICDATA max is 255 bytes
   int bytesRead;
 
   ledState = !ledState;
@@ -64,8 +64,6 @@ void loop()
     } else {
       Serial.println("CAMCTRL empty packet");
     }
-  } else {
-    Serial.println("No");
   }
 }
 
