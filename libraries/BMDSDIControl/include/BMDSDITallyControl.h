@@ -46,6 +46,7 @@ namespace BMD
 		template <unsigned N>
 		int			read(byte (&data)[N]) const;
 		void		flushRead() const;
+		int			peekIncoming(byte data[], int dataLength) const;
 
 		/** Low level tally write operations */
 		bool		availableForWrite() const;

@@ -30,6 +30,41 @@
 #include <string.h>
 
 namespace BMD {
+  namespace {
+    int camctrlMissingFinalPadding(const byte* data, int len)
+    {
+      const int kHdr = 4;
+
+      if (!data || len < kHdr) {
+        return 0;
+      }
+
+      int off = 0;
+      while (off < len) {
+        int rem = len - off;
+        if (rem < kHdr) {
+          return 0;
+        }
+
+        uint8_t payloadLen = data[off + 1];
+        int bodyLen = kHdr + payloadLen;
+        int pad = (payloadLen % 4) ? (4 - (payloadLen % 4)) : 0;
+        int total = bodyLen + pad;
+
+        if (rem > total) {
+          off += total;
+          continue;
+        }
+        if (off + rem == len && rem == total - 1) {
+          return 1;
+        }
+        return 0;
+      }
+
+      return 0;
+    }
+  }
+
   void SDICameraControl::setOverride(bool enabled) const {
     byte regValue = regRead8(kRegCONTROL);
     if (enabled)
@@ -57,7 +92,6 @@ namespace BMD {
     if (!available())
       return 0;
 
-    // ICLENGTH is a single-byte register
     int availableLength = regRead8(kRegICLENGTH);
 
     if (availableLength <= 0) {
@@ -70,13 +104,41 @@ namespace BMD {
 
     regRead(kRegICDATA, data, availableLength);
 
-    // Arm the control data incoming bank
+    int totalRead = availableLength;
+    int missingPad = camctrlMissingFinalPadding(data, availableLength);
+    if (missingPad > 0 && availableLength + missingPad <= dataLength && availableLength < 255) {
+      data[availableLength] = regRead8(kRegICDATA + availableLength);
+      totalRead = availableLength + missingPad;
+    }
+
     regWrite8(kRegICARM, kRegICARM_ARM_Mask);
 
-    return availableLength;
+    return totalRead;
   }
 
   void SDICameraControl::flushRead() const { regWrite8(kRegICARM, kRegICARM_ARM_Mask); }
+
+  int SDICameraControl::peekIncoming(byte data[], int dataLength) const
+  {
+    if (!shieldInitialized) {
+      return 0;
+    }
+
+    int length = regRead8(kRegICLENGTH);
+    if (length <= 0 || length > dataLength) {
+      return 0;
+    }
+
+    regRead(kRegICDATA, data, length);
+
+    int missingPad = camctrlMissingFinalPadding(data, length);
+    if (missingPad > 0 && length + missingPad <= dataLength && length < 255) {
+      data[length] = regRead8(kRegICDATA + length);
+      length += missingPad;
+    }
+
+    return length;
+  }
 
   bool SDICameraControl::availableForWrite() const { return (regRead8(kRegOCARM) & kRegOCARM_ARM_Mask) == 0; }
 
@@ -97,14 +159,11 @@ namespace BMD {
     if(shieldInitialized) {
       if(!bundleActive || forceWrite) {
         if(momentaryOverride) setOverride(true);
-        // Ensure any pending writes are complete before writing new data
         flushWrite();
 
-        // Set up control override length and data
         regWrite8(kRegOCLENGTH, dataLength);
         regWrite(kRegOCDATA, data, dataLength);
 
-        // Arm the control override bank
         regWrite8(kRegOCARM, kRegOCARM_ARM_Mask);
         if(momentaryOverride) setOverride(false);
       } else {
@@ -124,7 +183,6 @@ namespace BMD {
 
   void SDICameraControl::flushWrite() const {
     while (!availableForWrite()) {
-      // Wait for control override bank to become ready for new data
     }
   }
 
@@ -134,18 +192,15 @@ namespace BMD {
     const uint8_t kPayloadLength = 4 + (kParamLength * 1);
     const uint8_t kPaddingLength = (kPayloadLength % 4) ? (4 - (kPayloadLength % 4)) : 0;
 
-    byte payload[kHeaderLength + kPayloadLength + kPaddingLength] = {                    /* Header */
-                                                                     camera,             // Destination
-                                                                     kPayloadLength - 1, // Payload Length
-                                                                     0,                  // Command
-                                                                     0,                  // Source
-
-                                                                     /* Payload */
-                                                                     category,  // Category
-                                                                     parameter, // Parameter
-                                                                     0,         // Data Type
-                                                                     0,         // Operation
-
+    byte payload[kHeaderLength + kPayloadLength + kPaddingLength] = {
+                                                                     camera,
+                                                                     kPayloadLength - 1,
+                                                                     0,
+                                                                     0,
+                                                                     category,
+                                                                     parameter,
+                                                                     0,
+                                                                     0,
                                                                      1, 0, 0, 0};
 
     write(payload);
@@ -157,18 +212,15 @@ namespace BMD {
     const uint8_t kPayloadLength = 4 + (kParamLength * 1);
     const uint8_t kPaddingLength = (kPayloadLength % 4) ? (4 - (kPayloadLength % 4)) : 0;
 
-    byte payload[kHeaderLength + kPayloadLength + kPaddingLength] = {                /* Header */
-                                                                     camera,         // Destination
-                                                                     kPayloadLength, // Payload Length
-                                                                     0,              // Command
-                                                                     0,              // Source
-
-                                                                     /* Payload */
-                                                                     category,  // Category
-                                                                     parameter, // Parameter
-                                                                     0,         // Data Type
-                                                                     operation, // Operation
-
+    byte payload[kHeaderLength + kPayloadLength + kPaddingLength] = {
+                                                                     camera,
+                                                                     kPayloadLength,
+                                                                     0,
+                                                                     0,
+                                                                     category,
+                                                                     parameter,
+                                                                     0,
+                                                                     operation,
                                                                      value, 0, 0, 0};
 
     write(payload);
@@ -183,17 +235,14 @@ namespace BMD {
     const uint8_t kPaddingLength = (kPayloadLength % 4) ? (4 - (kPayloadLength % 4)) : 0;
 
     byte payload[kHeaderLength + (4 + kMaxStringLength) + 4] = {
-        /* Header */
-        camera,         // Destination
-        kPayloadLength, // Payload Length
-        0,              // Command
-        0,              // Source
-
-        /* Payload */
-        category,  // Category
-        parameter, // Parameter
-        5,         // Data Type
-        operation, // Operation
+        camera,
+        kPayloadLength,
+        0,
+        0,
+        category,
+        parameter,
+        5,
+        operation,
     };
 
     strncpy((char *)&payload[kHeaderLength + 4], string, kParamLength);

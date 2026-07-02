@@ -31,9 +31,9 @@ def sniff(port: str, seconds: float = 4.0) -> list[str]:
 
 def classify(lines: list[str]) -> str:
     text = "\n".join(lines)
-    if "TallyBlinkControlReceiver" in text or "[monitor] role RX" in text:
+    if "WirelessANC_RX" in text or ("READY" in text and " RX" in text):
         return "RX sketch"
-    if "SDI Control Shield + LoRa" in text and "Receiver" not in text:
+    if "WirelessANC_TX" in text or ("READY" in text and " TX" in text):
         return "TX sketch"
     if "TALLY decode:" in text or "-> LoRa" in text:
         return "likely TX sketch (runtime)"

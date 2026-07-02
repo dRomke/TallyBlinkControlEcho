@@ -43,10 +43,10 @@ namespace BMD
 		// Wait for shield to become ready, the FPGA takes time to boot up
 		while (regRead32(kRegIDENTIFIER) != expectedIdentifier)
 		{
-			if(millis() - startTime > 1000) {
-				Serial.println("\nTimeout connecting to BMD SDI Shield");
+			if (millis() - startTime > 5000) {
 				return;
 			}
+			delay(10);
 		}
 
 		shieldInitialized = true;

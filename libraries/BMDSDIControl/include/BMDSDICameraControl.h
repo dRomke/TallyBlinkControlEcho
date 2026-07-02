@@ -50,6 +50,7 @@ namespace BMD
 		int			read(byte (&data)[N]) const;
 		int			read(byte data[], int dataLength) const;
 		void		flushRead() const;
+		int			peekIncoming(byte data[], int dataLength) const;
 
 		/** Low level camera control write operations */
 		bool		availableForWrite() const;

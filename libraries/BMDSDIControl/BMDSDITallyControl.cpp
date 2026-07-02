@@ -91,6 +91,26 @@ namespace BMD
 		regWrite8(kRegOTARM, kRegOTARM_ARM_Mask);
 	}
 
+	void SDITallyControl::flushRead() const
+	{
+		regWrite8(kRegITARM, kRegITARM_ARM_Mask);
+	}
+
+	int SDITallyControl::peekIncoming(byte data[], int dataLength) const
+	{
+		if (!shieldInitialized) {
+			return 0;
+		}
+
+		int length = regRead16(kRegITLENGTH);
+		if (length <= 0 || length > dataLength) {
+			return 0;
+		}
+
+		regRead(kRegITDATA, data, length);
+		return length;
+	}
+
 	void SDITallyControl::reset() const
 	{
 		byte regValue = regRead8(kRegCONTROL);
