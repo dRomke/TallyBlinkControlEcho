@@ -51,6 +51,10 @@ static int  lastTallyLen = -1;
 static uint32_t lastTallyTxMs = 0;
 static const uint32_t TALLY_REFRESH_MS = 250;
 
+static byte camctrlPending[256];
+static int  camctrlPendingLen = 0;
+static int  camctrlPendingOffset = 0;
+
 int camctrlPacketTotalLen(const byte* data, int avail)
 {
   if (avail < CAMCTRL_HDR_LEN) {
@@ -135,31 +139,52 @@ bool tallyPayloadChanged(const byte* data, int len)
   return true;
 }
 
-void processCamctrlBuffer(const byte* buffer, int bytesRead)
+void queueCamctrlBuffer(const byte* buffer, int bytesRead)
 {
-  int offset = 0;
-
-  while (offset < bytesRead) {
-    int pktLen = camctrlPacketTotalLen(buffer + offset, bytesRead - offset);
-    if (pktLen < 0) {
-      monitorLogError(F("CAMCTRL parse error in bundle"));
-      break;
-    }
-
-    const byte* pkt = buffer + offset;
-
-    if (!camctrlDbContains(pkt, pktLen)) {
-      if (loraSendRaw(LORA_TYPE_CAMCTRL, pkt, pktLen)) {
-        camctrlDbInsert(pkt, pktLen);
-        monitorLogCamctrlTx(pktLen, pkt);
-        monitorLogCamctrlHex("TX", pkt, pktLen);
-      }
-    } else {
-      monitorLogCamctrlSkipped(pktLen, pkt);
-    }
-
-    offset += pktLen;
+  if (bytesRead <= 0 || bytesRead > (int)sizeof(camctrlPending)) {
+    return;
   }
+
+  memcpy(camctrlPending, buffer, bytesRead);
+  camctrlPendingLen = bytesRead;
+  camctrlPendingOffset = 0;
+}
+
+bool sendOneCamctrlPacket()
+{
+  if (camctrlPendingOffset >= camctrlPendingLen) {
+    camctrlPendingLen = 0;
+    camctrlPendingOffset = 0;
+    return false;
+  }
+
+  int pktLen = camctrlPacketTotalLen(
+    camctrlPending + camctrlPendingOffset,
+    camctrlPendingLen - camctrlPendingOffset);
+
+  if (pktLen < 0) {
+    monitorLogError(F("CAMCTRL parse error in bundle"));
+    camctrlPendingLen = 0;
+    camctrlPendingOffset = 0;
+    return false;
+  }
+
+  const byte* pkt = camctrlPending + camctrlPendingOffset;
+  camctrlPendingOffset += pktLen;
+
+  if (camctrlDbContains(pkt, pktLen)) {
+    monitorLogCamctrlSkipped(pktLen, pkt);
+    return camctrlPendingOffset < camctrlPendingLen;
+  }
+
+  if (!loraSendRaw(LORA_TYPE_CAMCTRL, pkt, pktLen)) {
+    return false;
+  }
+
+  camctrlDbInsert(pkt, pktLen);
+  monitorLogCamctrlTx(pktLen, pkt);
+  monitorLogCamctrlHex("TX", pkt, pktLen);
+  return camctrlPendingOffset < camctrlPendingLen;
 }
 
 void setup()
@@ -187,41 +212,64 @@ void setup()
   }
 }
 
-void loop()
+void handleTally()
 {
   byte buffer[256];
 
-  if (sdiTallyControl.available()) {
-    int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
-    if (bytesRead > 0) {
-      bool tallyNew = !tallyContentMatches(buffer, bytesRead);
-
-      if (loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
-        monitorLogTallyTx(bytesRead);
-        Serial.flush();
-
-#if MONITOR_TALLY_DECODE_TX
-        if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
-          monitorLogTallyDecodeTx(buffer, bytesRead);
-        }
-#endif
-#if MONITOR_TALLY_HEX
-        if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
-          logTxTallyHex(buffer, bytesRead);
-        }
-#endif
-      }
-    }
+  if (!sdiTallyControl.available()) {
+    return;
   }
 
-  if (sdiCameraControl.available()) {
+  int bytesRead = sdiTallyControl.read(buffer, sizeof(buffer));
+  if (bytesRead <= 0) {
+    return;
+  }
+
+  bool tallyNew = !tallyContentMatches(buffer, bytesRead);
+
+  if (!loraSendRaw(LORA_TYPE_TALLY, buffer, bytesRead)) {
+    return;
+  }
+
+  monitorLogTallyTx(bytesRead);
+  Serial.flush();
+
+#if MONITOR_TALLY_DECODE_TX
+  if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
+    monitorLogTallyDecodeTx(buffer, bytesRead);
+  }
+#endif
+#if MONITOR_TALLY_HEX
+  if (tallyNew || MONITOR_TALLY_HEX_ON_REFRESH) {
+    logTxTallyHex(buffer, bytesRead);
+  }
+#endif
+}
+
+void pollCamctrl()
+{
+  byte buffer[256];
+
+  if (camctrlPendingOffset >= camctrlPendingLen && sdiCameraControl.available()) {
     int bytesRead = sdiCameraControl.read(buffer, sizeof(buffer));
     if (bytesRead > 0) {
-      processCamctrlBuffer(buffer, bytesRead);
+      queueCamctrlBuffer(buffer, bytesRead);
     } else if (bytesRead < 0) {
       monitorLogError(F("CAMCTRL buffer too small, flushing"));
       sdiCameraControl.flushRead();
     }
+  }
+}
+
+void loop()
+{
+  // Tally first: one LoRa TX per loop when due.
+  handleTally();
+
+  // Camera control: queue bundles, send at most one novel packet per loop.
+  pollCamctrl();
+  if (camctrlPendingOffset < camctrlPendingLen) {
+    sendOneCamctrlPacket();
   }
 }
 

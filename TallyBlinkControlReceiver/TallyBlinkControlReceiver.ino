@@ -23,6 +23,7 @@ LLCC68 lora = new Module(10, 2, 3, 9);
 static const uint8_t LORA_TYPE_CAMCTRL = 0x01;
 static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
+static const uint32_t TALLY_REINJECT_MS = 250;
 
 // Nano Matter built-in LED is active LOW
 static const uint8_t LED_ACTIVE   = LOW;
@@ -30,6 +31,10 @@ static const uint8_t LED_INACTIVE = HIGH;
 
 static byte lastCamctrl[256];
 static int  lastCamctrlLen = -1;
+
+static byte lastTallyPayload[256];
+static int  lastTallyPayloadLen = 0;
+static uint32_t lastTallyInjectMs = 0;
 
 volatile bool loraRxFlag = false;
 
@@ -47,6 +52,71 @@ bool camctrlChanged(const byte* data, int len)
   memcpy(lastCamctrl, data, len);
   lastCamctrlLen = len;
   return true;
+}
+
+void injectTally(const byte* payload, int payloadLen)
+{
+  if (payloadLen <= 0 || payloadLen > (int)sizeof(lastTallyPayload)) {
+    return;
+  }
+
+  memcpy(lastTallyPayload, payload, payloadLen);
+  lastTallyPayloadLen = payloadLen;
+  sdiTallyControl.write(payload, payloadLen);
+  lastTallyInjectMs = millis();
+}
+
+void reinjectTallyIfDue()
+{
+  if (lastTallyPayloadLen > 0 &&
+      millis() - lastTallyInjectMs >= TALLY_REINJECT_MS) {
+    sdiTallyControl.write(lastTallyPayload, lastTallyPayloadLen);
+    lastTallyInjectMs = millis();
+  }
+}
+
+void handleLoRaPacket(const byte* packet, size_t len)
+{
+  if (len < 2) {
+    monitorLogError(F("LoRa packet too short"));
+    return;
+  }
+
+  uint8_t type = packet[0];
+  const byte* payload = packet + 1;
+  int payloadLen = len - 1;
+
+  if (type == LORA_TYPE_TALLY) {
+    digitalWrite(LED_BUILTIN, LED_ACTIVE);
+    float rssi = lora.getRSSI();
+    injectTally(payload, payloadLen);
+    monitorLogTallyRx(payloadLen, rssi);
+    monitorLogTallyHex("RX", payload, payloadLen);
+    digitalWrite(LED_BUILTIN, LED_INACTIVE);
+    return;
+  }
+
+  if (type == LORA_TYPE_CAMCTRL && camctrlChanged(payload, payloadLen)) {
+    digitalWrite(LED_BUILTIN, LED_ACTIVE);
+    float rssi = lora.getRSSI();
+    sdiCameraControl.write(payload, payloadLen, true);
+    monitorLogCamctrlRx(payloadLen, rssi);
+    monitorLogCamctrlHex("RX", payload, payloadLen);
+    digitalWrite(LED_BUILTIN, LED_INACTIVE);
+    return;
+  }
+
+  if (type != LORA_TYPE_CAMCTRL) {
+    monitorLogErrorCode(F("LoRa unknown type 0x"), type);
+  }
+}
+
+void resumeLoRaRx()
+{
+  int state = lora.startReceive();
+  if (state != RADIOLIB_ERR_NONE) {
+    monitorLogErrorCode(F("startReceive failed, code "), state);
+  }
 }
 
 void setup()
@@ -74,66 +144,28 @@ void setup()
   }
 
   lora.setPacketReceivedAction(onLoraRx);
-  state = lora.startReceive();
-  if (state != RADIOLIB_ERR_NONE) {
-    monitorLogErrorCode(F("startReceive failed, code "), state);
-  }
+  resumeLoRaRx();
 }
 
 void loop()
 {
-  if (!loraRxFlag) {
-    return;
-  }
-  loraRxFlag = false;
+  reinjectTallyIfDue();
 
-  byte packet[LORA_MAX_PAYLOAD];
-  int state = lora.readData(packet, sizeof(packet));
+  while (loraRxFlag) {
+    loraRxFlag = false;
 
-  if (state == RADIOLIB_ERR_NONE) {
-    size_t len = lora.getPacketLength();
-    if (len < 2) {
-      monitorLogError(F("LoRa packet too short"));
+    byte packet[LORA_MAX_PAYLOAD];
+    int state = lora.readData(packet, sizeof(packet));
+
+    // Resume listening before SDI writes (which can block for frames).
+    resumeLoRaRx();
+
+    if (state == RADIOLIB_ERR_NONE) {
+      handleLoRaPacket(packet, lora.getPacketLength());
+    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+      monitorLogError(F("LoRa CRC error"));
     } else {
-      uint8_t type = packet[0];
-      const byte* payload = packet + 1;
-      int payloadLen = len - 1;
-      bool apply = false;
-
-      if (type == LORA_TYPE_TALLY) {
-        apply = true;
-      } else if (type == LORA_TYPE_CAMCTRL) {
-        apply = camctrlChanged(payload, payloadLen);
-      }
-
-      if (apply) {
-        digitalWrite(LED_BUILTIN, LED_ACTIVE);
-
-        float rssi = lora.getRSSI();
-
-        if (type == LORA_TYPE_CAMCTRL) {
-          sdiCameraControl.write(payload, payloadLen, true);
-          monitorLogCamctrlRx(payloadLen, rssi);
-          monitorLogCamctrlHex("RX", payload, payloadLen);
-        } else if (type == LORA_TYPE_TALLY) {
-          sdiTallyControl.write(payload, payloadLen);
-          monitorLogTallyRx(payloadLen, rssi);
-          monitorLogTallyHex("RX", payload, payloadLen);
-        } else {
-          monitorLogErrorCode(F("LoRa unknown type 0x"), type);
-        }
-
-        digitalWrite(LED_BUILTIN, LED_INACTIVE);
-      }
+      monitorLogErrorCode(F("LoRa RX err "), state);
     }
-  } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-    monitorLogError(F("LoRa CRC error"));
-  } else {
-    monitorLogErrorCode(F("LoRa RX err "), state);
-  }
-
-  state = lora.startReceive();
-  if (state != RADIOLIB_ERR_NONE) {
-    monitorLogErrorCode(F("startReceive failed, code "), state);
   }
 }
