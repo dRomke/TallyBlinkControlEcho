@@ -32,6 +32,8 @@ static byte lastTally[256];
 static int  lastTallyLen = -1;
 static byte lastCamctrl[256];
 static int  lastCamctrlLen = -1;
+static uint32_t lastTallyTxMs = 0;
+static const uint32_t TALLY_REFRESH_MS = 250;
 
 bool payloadChanged(uint8_t type, const byte* data, int len)
 {
@@ -111,8 +113,20 @@ void loop()
 
 bool loraSendRaw(uint8_t type, const byte* data, int len)
 {
-  if (len <= 0 || !payloadChanged(type, data, len)) {
+  if (len <= 0) {
     return false;
+  }
+
+  bool changed = payloadChanged(type, data, len);
+  bool tallyRefresh = (type == LORA_TYPE_TALLY) &&
+                      (millis() - lastTallyTxMs >= TALLY_REFRESH_MS);
+
+  if (!changed && !tallyRefresh) {
+    return false;
+  }
+
+  if (type == LORA_TYPE_TALLY) {
+    lastTallyTxMs = millis();
   }
 
   if (len > (int)LORA_MAX_RAW) {

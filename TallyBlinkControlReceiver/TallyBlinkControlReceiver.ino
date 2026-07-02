@@ -22,38 +22,29 @@ LLCC68 lora = new Module(10, 2, 3, 9);
 static const uint8_t LORA_TYPE_CAMCTRL = 0x01;
 static const uint8_t LORA_TYPE_TALLY   = 0x02;
 static const size_t  LORA_MAX_PAYLOAD  = 255;
-static const uint32_t LORA_RX_TIMEOUT_MS = 10;
 
 // Nano Matter built-in LED is active LOW
 static const uint8_t LED_ACTIVE   = LOW;
 static const uint8_t LED_INACTIVE = HIGH;
 
-static byte lastTally[256];
-static int  lastTallyLen = -1;
 static byte lastCamctrl[256];
 static int  lastCamctrlLen = -1;
 
-bool payloadChanged(uint8_t type, const byte* data, int len)
+volatile bool loraRxFlag = false;
+
+void onLoraRx()
 {
-  byte* lastData;
-  int* lastLen;
+  loraRxFlag = true;
+}
 
-  if (type == LORA_TYPE_TALLY) {
-    lastData = lastTally;
-    lastLen = &lastTallyLen;
-  } else if (type == LORA_TYPE_CAMCTRL) {
-    lastData = lastCamctrl;
-    lastLen = &lastCamctrlLen;
-  } else {
-    return true;
-  }
-
-  if (*lastLen == len && memcmp(lastData, data, len) == 0) {
+bool camctrlChanged(const byte* data, int len)
+{
+  if (lastCamctrlLen == len && memcmp(lastCamctrl, data, len) == 0) {
     return false;
   }
 
-  memcpy(lastData, data, len);
-  *lastLen = len;
+  memcpy(lastCamctrl, data, len);
+  lastCamctrlLen = len;
   return true;
 }
 
@@ -79,55 +70,76 @@ void setup()
     Serial.print(F("failed, code "));
     Serial.println(state);
   }
+
+  lora.setPacketReceivedAction(onLoraRx);
+  state = lora.startReceive();
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.print(F("startReceive failed, code "));
+    Serial.println(state);
+  }
 }
 
 void loop()
 {
-  byte packet[LORA_MAX_PAYLOAD];
+  if (!loraRxFlag) {
+    return;
+  }
+  loraRxFlag = false;
 
-  int state = lora.receive(packet, sizeof(packet), LORA_RX_TIMEOUT_MS);
+  byte packet[LORA_MAX_PAYLOAD];
+  int state = lora.readData(packet, sizeof(packet));
 
   if (state == RADIOLIB_ERR_NONE) {
     size_t len = lora.getPacketLength();
     if (len < 2) {
       Serial.println("LoRa packet too short");
-      return;
-    }
-
-    uint8_t type = packet[0];
-    const byte* payload = packet + 1;
-    int payloadLen = len - 1;
-
-    if (!payloadChanged(type, payload, payloadLen)) {
-      return;
-    }
-
-    digitalWrite(LED_BUILTIN, LED_ACTIVE);
-
-    if (type == LORA_TYPE_CAMCTRL) {
-      sdiCameraControl.write(payload, payloadLen, true);
-      Serial.print("LoRa -> SDI CAMCTRL [");
-      Serial.print(payloadLen);
-      Serial.print(" bytes] RSSI ");
-      Serial.print(lora.getRSSI());
-      Serial.println(" dBm");
-    } else if (type == LORA_TYPE_TALLY) {
-      sdiTallyControl.write(payload, payloadLen);
-      Serial.print("LoRa -> SDI TALLY [");
-      Serial.print(payloadLen);
-      Serial.print(" bytes] RSSI ");
-      Serial.print(lora.getRSSI());
-      Serial.println(" dBm");
     } else {
-      Serial.print("LoRa unknown type 0x");
-      Serial.println(type, HEX);
-    }
+      uint8_t type = packet[0];
+      const byte* payload = packet + 1;
+      int payloadLen = len - 1;
+      bool apply = false;
 
-    digitalWrite(LED_BUILTIN, LED_INACTIVE);
+      if (type == LORA_TYPE_TALLY) {
+        apply = true;
+      } else if (type == LORA_TYPE_CAMCTRL) {
+        apply = camctrlChanged(payload, payloadLen);
+      }
+
+      if (apply) {
+        digitalWrite(LED_BUILTIN, LED_ACTIVE);
+
+        if (type == LORA_TYPE_CAMCTRL) {
+          sdiCameraControl.write(payload, payloadLen, true);
+          Serial.print("LoRa -> SDI CAMCTRL [");
+          Serial.print(payloadLen);
+          Serial.print(" bytes] RSSI ");
+          Serial.print(lora.getRSSI());
+          Serial.println(" dBm");
+        } else if (type == LORA_TYPE_TALLY) {
+          sdiTallyControl.write(payload, payloadLen);
+          Serial.print("LoRa -> SDI TALLY [");
+          Serial.print(payloadLen);
+          Serial.print(" bytes] RSSI ");
+          Serial.print(lora.getRSSI());
+          Serial.println(" dBm");
+        } else {
+          Serial.print("LoRa unknown type 0x");
+          Serial.println(type, HEX);
+        }
+
+        digitalWrite(LED_BUILTIN, LED_INACTIVE);
+      }
+    }
   } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
     Serial.println("LoRa CRC error");
-  } else if (state != RADIOLIB_ERR_RX_TIMEOUT) {
+  } else {
     Serial.print("LoRa RX err ");
+    Serial.println(state);
+  }
+
+  state = lora.startReceive();
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.print("startReceive failed, code ");
     Serial.println(state);
   }
 }
